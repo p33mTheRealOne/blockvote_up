@@ -4,6 +4,8 @@ let faceapi:
 
 let modelsLoaded = false;
 
+let modelsLoading: Promise<void> | null = null;
+
 const MODEL_URL =
   "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
 
@@ -34,13 +36,23 @@ export async function loadFaceModels(): Promise<void> {
     return;
   }
 
-  await Promise.all([
-    api.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-    api.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-    api.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-  ]);
+  if (!modelsLoading) {
+    modelsLoading = Promise.all([
+      api.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      api.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      api.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    ])
+      .then(() => {
+        modelsLoaded = true;
+      })
+      .catch((error) => {
+        modelsLoading = null;
 
-  modelsLoaded = true;
+        throw error;
+      });
+  }
+
+  await modelsLoading;
 }
 
 /* =========================================================
@@ -444,6 +456,400 @@ async function detectIdFace(
   }
 
   return null;
+}
+
+/* =========================================================
+   EXTRACT ID PHOTO
+   หารูปใบหน้าบนบัตร -> ตัด -> ขยาย -> ทำให้ชัด
+========================================================= */
+
+type IdPhotoAttempt = {
+  source: HTMLImageElement | HTMLCanvasElement;
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+  inputSize: 416 | 512;
+  scoreThreshold: number;
+};
+
+type IdPhotoBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+function clampNumber(
+  value: number,
+  min: number,
+  max: number
+): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function enhanceIdPhoto(
+  canvas: HTMLCanvasElement
+): void {
+  const context = canvas.getContext("2d", {
+    willReadFrequently: true,
+  });
+
+  if (!context) {
+    return;
+  }
+
+  const { width, height } = canvas;
+
+  const imageData = context.getImageData(
+    0,
+    0,
+    width,
+    height
+  );
+
+  const data = imageData.data;
+
+  /*
+   * 1) ปรับ contrast อัตโนมัติ (auto levels)
+   */
+
+  const histogram = new Uint32Array(256);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const luminance = Math.round(
+      0.299 * data[i] +
+        0.587 * data[i + 1] +
+        0.114 * data[i + 2]
+    );
+
+    histogram[luminance] += 1;
+  }
+
+  const totalPixels = width * height;
+
+  let low = 0;
+  let high = 255;
+  let accumulated = 0;
+
+  for (let i = 0; i < 256; i += 1) {
+    accumulated += histogram[i];
+
+    if (accumulated >= totalPixels * 0.01) {
+      low = i;
+      break;
+    }
+  }
+
+  accumulated = 0;
+
+  for (let i = 255; i >= 0; i -= 1) {
+    accumulated += histogram[i];
+
+    if (accumulated >= totalPixels * 0.01) {
+      high = i;
+      break;
+    }
+  }
+
+  if (high - low > 20) {
+    const stretch = 255 / (high - low);
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = clampNumber(
+        (data[i] - low) * stretch,
+        0,
+        255
+      );
+
+      data[i + 1] = clampNumber(
+        (data[i + 1] - low) * stretch,
+        0,
+        255
+      );
+
+      data[i + 2] = clampNumber(
+        (data[i + 2] - low) * stretch,
+        0,
+        255
+      );
+    }
+  }
+
+  /*
+   * 2) Sharpen (unsharp แบบ Laplacian)
+   */
+
+  const source = new Uint8ClampedArray(data);
+  const amount = 0.5;
+  const rowStride = width * 4;
+
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const index = y * rowStride + x * 4;
+
+      for (let channel = 0; channel < 3; channel += 1) {
+        const position = index + channel;
+
+        const laplacian =
+          4 * source[position] -
+          source[position - 4] -
+          source[position + 4] -
+          source[position - rowStride] -
+          source[position + rowStride];
+
+        data[position] = clampNumber(
+          source[position] + amount * laplacian,
+          0,
+          255
+        );
+      }
+    }
+  }
+
+  context.putImageData(imageData, 0, 0);
+}
+
+export async function extractIdPhoto(
+  source: HTMLImageElement
+): Promise<string | null> {
+  try {
+    const api = await getFaceApi();
+
+    await loadFaceModels();
+
+    const width =
+      source.naturalWidth || source.width;
+
+    const height =
+      source.naturalHeight || source.height;
+
+    if (!width || !height) {
+      return null;
+    }
+
+    /*
+     * ลำดับการหาใบหน้าบนบัตร
+     * (ทำแบบ lazy เพื่อไม่สร้าง canvas ที่ไม่จำเป็น)
+     */
+
+    const attempts: Array<
+      () => IdPhotoAttempt
+    > = [
+      () => ({
+        source,
+        offsetX: 0,
+        offsetY: 0,
+        scale: 1,
+        inputSize: 416,
+        scoreThreshold: 0.2,
+      }),
+
+      () => ({
+        source: createUpscaledImage(source, 3),
+        offsetX: 0,
+        offsetY: 0,
+        scale: 3,
+        inputSize: 512,
+        scoreThreshold: 0.15,
+      }),
+
+      () => ({
+        source: cropIdPhotoRegion(source),
+        offsetX: Math.floor(width * 0.52),
+        offsetY: Math.floor(height * 0.03),
+        scale: 3,
+        inputSize: 512,
+        scoreThreshold: 0.15,
+      }),
+
+      () => ({
+        source: cropIdPhotoRegionWide(source),
+        offsetX: Math.floor(width * 0.45),
+        offsetY: 0,
+        scale: 3,
+        inputSize: 512,
+        scoreThreshold: 0.1,
+      }),
+    ];
+
+    let faceBox: IdPhotoBox | null = null;
+
+    for (const createAttempt of attempts) {
+      try {
+        const attempt = createAttempt();
+
+        const detections =
+          await api.detectAllFaces(
+            attempt.source,
+            new api.TinyFaceDetectorOptions({
+              inputSize: attempt.inputSize,
+              scoreThreshold:
+                attempt.scoreThreshold,
+            })
+          );
+
+        if (detections.length === 0) {
+          continue;
+        }
+
+        /*
+         * แปลงกรอบใบหน้ากลับมาเป็นพิกัดบนภาพบัตรต้นฉบับ
+         */
+
+        const boxes: IdPhotoBox[] =
+          detections.map((detection) => ({
+            x:
+              attempt.offsetX +
+              detection.box.x / attempt.scale,
+            y:
+              attempt.offsetY +
+              detection.box.y / attempt.scale,
+            width:
+              detection.box.width /
+              attempt.scale,
+            height:
+              detection.box.height /
+              attempt.scale,
+          }));
+
+        /*
+         * รูปหลักบนบัตรอยู่ฝั่งขวาและใหญ่ที่สุด
+         * (รูปเงาจางๆ เล็กกว่า)
+         */
+
+        const rightSide = boxes.filter(
+          (box) =>
+            box.x + box.width / 2 >
+            width * 0.4
+        );
+
+        const candidates =
+          rightSide.length > 0
+            ? rightSide
+            : boxes;
+
+        faceBox = candidates.reduce(
+          (best, box) =>
+            box.width * box.height >
+            best.width * best.height
+              ? box
+              : best
+        );
+
+        break;
+      } catch (error) {
+        console.warn(
+          "[Face Match] ID photo search failed",
+          error
+        );
+      }
+    }
+
+    if (!faceBox) {
+      return null;
+    }
+
+    /*
+     * ตัดรูปโดยเผื่อพื้นที่รอบใบหน้า (ผม คาง ไหล่)
+     */
+
+    const padX = faceBox.width * 0.45;
+    const padTop = faceBox.height * 0.6;
+    const padBottom = faceBox.height * 0.4;
+
+    const left = clampNumber(
+      faceBox.x - padX,
+      0,
+      width
+    );
+
+    const top = clampNumber(
+      faceBox.y - padTop,
+      0,
+      height
+    );
+
+    const right = clampNumber(
+      faceBox.x + faceBox.width + padX,
+      0,
+      width
+    );
+
+    const bottom = clampNumber(
+      faceBox.y + faceBox.height + padBottom,
+      0,
+      height
+    );
+
+    const cropWidth = right - left;
+    const cropHeight = bottom - top;
+
+    if (cropWidth < 1 || cropHeight < 1) {
+      return null;
+    }
+
+    /*
+     * ขยายให้สูงประมาณ 720px (ขยายสูงสุด 6 เท่า)
+     */
+
+    const scale = Math.min(
+      6,
+      Math.max(1, 720 / cropHeight)
+    );
+
+    const canvas =
+      document.createElement("canvas");
+
+    canvas.width = Math.max(
+      1,
+      Math.round(cropWidth * scale)
+    );
+
+    canvas.height = Math.max(
+      1,
+      Math.round(cropHeight * scale)
+    );
+
+    const context =
+      canvas.getContext("2d");
+
+    if (!context) {
+      return null;
+    }
+
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+
+    context.drawImage(
+      source,
+      left,
+      top,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    /*
+     * ทำให้ชัดขึ้น
+     */
+
+    enhanceIdPhoto(canvas);
+
+    return canvas.toDataURL(
+      "image/jpeg",
+      0.95
+    );
+  } catch (error) {
+    console.warn(
+      "[Face Match] Extract ID photo failed",
+      error
+    );
+
+    return null;
+  }
 }
 
 /* =========================================================
