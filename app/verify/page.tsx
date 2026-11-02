@@ -29,6 +29,7 @@ import {
 import { extractValidCitizenId } from "@/lib/thai-id";
 import {
   verifyFace,
+  extractIdPhoto,
   detectLandmarks,
   loadFaceModels,
   type FaceVerificationResult,
@@ -197,6 +198,9 @@ export default function VerifyPage() {
   const ocrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
+
+  const idPhotoPromiseRef =
+    useRef<Promise<string | null> | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
   const scanTimerRef =
@@ -713,6 +717,17 @@ export default function VerifyPage() {
         setCapturedImage(dataUrl);
         setIdNumber(detectedId);
 
+        /*
+         * หารูปบนบัตร ตัด ขยาย และทำให้ชัด
+         * เก็บไว้ใช้เทียบกับใบหน้าตอนสแกนหน้า
+         */
+        idPhotoPromiseRef.current =
+          dataUrlToImage(dataUrl)
+            .then((image) =>
+              extractIdPhoto(image)
+            )
+            .catch(() => null);
+
         setCameraError(null);
 
         setStatus("captured");
@@ -847,6 +862,7 @@ export default function VerifyPage() {
     stopIdCamera();
 
     setCapturedImage(null);
+    idPhotoPromiseRef.current = null;
     setIdNumber("");
     setCameraError(null);
     setScanHint(
@@ -1102,11 +1118,52 @@ export default function VerifyPage() {
               selfieDataUrl
             );
 
-          const result =
-            await verifyFace(
+          /*
+           * ใช้รูปบนบัตรที่ตัด ขยาย และทำให้ชัดไว้แล้วตอนสแกนบัตร
+           * ถ้าไม่มี หรือใช้ไม่ได้ ให้ถอยกลับไปใช้ภาพบัตรทั้งใบ
+           */
+          let idPhotoImage: HTMLImageElement | null =
+            null;
+
+          try {
+            const idPhotoDataUrl =
+              await idPhotoPromiseRef.current;
+
+            if (idPhotoDataUrl) {
+              idPhotoImage =
+                await dataUrlToImage(
+                  idPhotoDataUrl
+                );
+            }
+          } catch {
+            idPhotoImage = null;
+          }
+
+          let result: FaceVerificationResult;
+
+          if (idPhotoImage) {
+            try {
+              result = await verifyFace(
+                idPhotoImage,
+                selfieImageElement
+              );
+            } catch (photoError) {
+              console.warn(
+                "ID photo match failed, using full card:",
+                photoError
+              );
+
+              result = await verifyFace(
+                idImage,
+                selfieImageElement
+              );
+            }
+          } else {
+            result = await verifyFace(
               idImage,
               selfieImageElement
             );
+          }
 
           setFaceResult(result);
 
