@@ -12,7 +12,9 @@ import {
    CONFIG
 ========================================================= */
 
-export const ELECTION_ID = 6;
+import { ELECTION_ID } from "@/lib/election";
+
+export { ELECTION_ID };
 
 const connection = new Connection(
   RPC_ENDPOINT,
