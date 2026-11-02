@@ -53,7 +53,7 @@ import {
 | ต้องตรงกับ election ที่ใช้ใน /vote/page.tsx
 |
 */
-const ELECTION_ID = 6;
+const ELECTION_ID = 8;
 
 /*
 |--------------------------------------------------------------------------
