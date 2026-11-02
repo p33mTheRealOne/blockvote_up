@@ -21,6 +21,7 @@ import {
   type PartyData,
 } from "@/lib/solana-program";
 
+import { ELECTION_ID } from "@/lib/election";
 import {
   submitVoteCommit,
   type VoteCommitResult,
@@ -30,7 +31,7 @@ import {
    CONFIG
 ========================================================= */
 
-const ELECTION_ID = 8;
+
 
 /* =========================================================
    TYPES
