@@ -8,7 +8,6 @@ import Stepper from "@/components/Stepper";
 import Shell from "@/components/Shell";
 import {
   IconArrowRight,
-  IconDownload,
   IconExternal,
 } from "@/components/icons";
 import { Loader2 } from "lucide-react";
@@ -361,9 +360,6 @@ export default function VotePage() {
       null
     );
 
-  const [nonceCopied, setNonceCopied] =
-    useState(false);
-
   /* =======================================================
      OPEN CONFIRMATION
   ======================================================= */
@@ -441,36 +437,6 @@ export default function VotePage() {
     }
 
   /* =======================================================
-     COPY NONCE
-  ======================================================= */
-
-  async function copyNonce() {
-    if (!voteResult) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(
-        voteResult.nonceHex
-      );
-
-      setNonceCopied(true);
-
-      setTimeout(
-        () => {
-          setNonceCopied(false);
-        },
-        2000
-      );
-    } catch {
-      /*
-       * Clipboard unavailable.
-       * User can still manually copy the nonce.
-       */
-    }
-  }
-
-  /* =======================================================
      UI-ONLY STATE / HELPERS
   ======================================================= */
 
@@ -495,36 +461,6 @@ export default function VotePage() {
     } catch {
       /* clipboard unavailable */
     }
-  }
-
-  function downloadNonce() {
-    if (!voteResult) {
-      return;
-    }
-
-    const text = [
-      "BlockVote - nonce backup",
-      `Election: ${ELECTION_ID}`,
-      `Wallet: ${walletAddress ?? ""}`,
-      `Nonce: ${voteResult.nonceHex}`,
-      `Tx: ${voteResult.tx}`,
-    ].join("\n");
-
-    const blob = new Blob([text], {
-      type: "text/plain",
-    });
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-
-    a.href = url;
-    a.download = `blockvote-nonce-election-${ELECTION_ID}.txt`;
-
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    URL.revokeObjectURL(url);
   }
 
   /* =======================================================
@@ -828,9 +764,8 @@ export default function VotePage() {
                 </h2>
 
                 <p className="hm-lead">
-                  เก็บ nonce ด้านล่างไว้ให้ดี
-                  ต้องใช้ตอนเปิดเผยผลโหวต
-                  ถ้าทำหายจะพิสูจน์คะแนนของคุณไม่ได้
+                  โหวตเสร็จเรียบร้อยแล้ว
+                  ไม่ต้องบันทึกหรือเก็บข้อมูลอะไรเพิ่ม
                 </p>
               </section>
 
@@ -840,35 +775,6 @@ export default function VotePage() {
                   gap: "var(--space-md)",
                 }}
               >
-                <div className="hm-head">
-                  <h2 className="hm-h2">Nonce</h2>
-                </div>
-
-                <code className="hm-code">
-                  {voteResult.nonceHex}
-                </code>
-
-                <div className="hm-actions">
-                  <button
-                    type="button"
-                    onClick={copyNonce}
-                    className="hm-btn hm-btn--sm"
-                  >
-                    {nonceCopied
-                      ? "คัดลอกแล้ว"
-                      : "คัดลอก"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={downloadNonce}
-                    className="hm-btn hm-btn--sm"
-                  >
-                    <IconDownload size={16} />
-                    ดาวน์โหลด
-                  </button>
-                </div>
-
                 <p className="hm-label" style={{ margin: 0 }}>
                   ธุรกรรม
                 </p>
@@ -886,18 +792,6 @@ export default function VotePage() {
                   ดูบน Solana Explorer
                   <IconExternal size={16} />
                 </a>
-
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "var(--text-sm)",
-                    color: "var(--color-muted)",
-                  }}
-                >
-                  ระบบเก็บสำเนา nonce ไว้ในเบราว์เซอร์นี้ด้วย
-                  แต่ข้อมูลหายได้ถ้าล้างเบราว์เซอร์
-                  จึงควรดาวน์โหลดเก็บไว้
-                </p>
 
                 <Link
                   href="/scoreboard"
