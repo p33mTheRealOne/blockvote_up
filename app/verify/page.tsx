@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { extractValidCitizenId } from "@/lib/thai-id";
+import { ELECTION_ID } from "@/lib/election";
 import {
   verifyFace,
   extractIdPhoto,
@@ -53,7 +54,7 @@ import {
 | ต้องตรงกับ election ที่ใช้ใน /vote/page.tsx
 |
 */
-const ELECTION_ID = 8;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -438,7 +439,7 @@ export default function VerifyPage() {
             response.publicKey.toString();
 
         const voterStatus =
-        await fetchVoterStatus(address);
+        await fetchVoterStatus(address, ELECTION_ID);
 
         if (voterStatus?.verified) {
         router.replace("/vote");
