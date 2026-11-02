@@ -115,10 +115,10 @@ function formatDate(unix: number): string {
 function challengeLabel(challenge: Challenge): string {
   switch (challenge) {
     case "LEFT":
-      return "หันหน้าไปทางซ้าย";
+      return "หันหน้าไปทางขวา";
 
     case "RIGHT":
-      return "หันหน้าไปทางขวา";
+      return "หันหน้าไปทางซ้าย";
 
     case "UP":
       return "เงยหน้าขึ้น";
@@ -137,10 +137,10 @@ function challengeLabel(challenge: Challenge): string {
 function challengeIcon(challenge: Challenge): string {
   switch (challenge) {
     case "LEFT":
-      return "←";
+      return "→";
 
     case "RIGHT":
-      return "→";
+      return "←";
 
     case "UP":
       return "↑";
@@ -2064,30 +2064,28 @@ export default function VerifyPage() {
                   </div>
                 </div>
 
-                {!idNumber && (
-                  <div className="mt-3">
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                      เลขบัตรประชาชน
-                    </label>
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                    ตรวจสอบ / แก้ไขเลขบัตรประชาชน
+                  </label>
 
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="กรอกเลขบัตร 13 หลัก"
-                      maxLength={13}
-                      value={idNumber}
-                      onChange={(event) =>
-                        setIdNumber(
-                          event.target.value.replace(
-                            /\D/g,
-                            ""
-                          )
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="กรอกเลขบัตร 13 หลัก"
+                    maxLength={13}
+                    value={idNumber}
+                    onChange={(event) =>
+                      setIdNumber(
+                        event.target.value.replace(
+                          /\D/g,
+                          ""
                         )
-                      }
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                  </div>
-                )}
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
 
                 {idNumber &&
                   idNumber.length !== 13 && (
