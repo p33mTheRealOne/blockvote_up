@@ -27,6 +27,32 @@ const STEPS = [
   },
 ];
 
+const PHANTOM_DOWNLOAD_URL = "https://phantom.app/download";
+
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+// Phantom ฉีด provider เข้าหน้าเว็บหลังโหลดเล็กน้อย (โดยเฉพาะใน in-app browser)
+async function waitForPhantom(timeoutMs = 1500) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const provider = (window as any).phantom?.solana;
+    if (provider) return provider;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return (window as any).phantom?.solana;
+}
+
+// เปิดหน้าเว็บนี้ใน in-app browser ของ Phantom
+// - ติดตั้งแล้ว: universal link เปิดแอป Phantom
+// - ยังไม่ติดตั้ง: เปิดหน้า phantom.app ซึ่งพาไปดาวน์โหลดตามระบบ (iOS/Android)
+function openInPhantomApp() {
+  const url = encodeURIComponent(window.location.href);
+  const ref = encodeURIComponent(window.location.origin);
+  window.location.href = `https://phantom.app/ul/browse/${url}?ref=${ref}`;
+}
+
 export default function ConnectWallet() {
   const router = useRouter();
 
@@ -47,11 +73,20 @@ export default function ConnectWallet() {
       setConnecting(true);
       setNotice("");
 
-      const provider = (window as any).phantom?.solana;
+      let provider = (window as any).phantom?.solana;
 
       if (!provider) {
-        setNotice("กรุณาติดตั้ง Phantom Wallet ก่อน");
-        return;
+        if (isMobileDevice()) {
+          // มือถือ: รอสั้น ๆ เผื่ออยู่ใน Phantom browser อยู่แล้ว ไม่งั้นพาไปแอป
+          provider = await waitForPhantom();
+          if (!provider) {
+            openInPhantomApp();
+            return;
+          }
+        } else {
+          setNotice("กรุณาติดตั้ง Phantom Wallet ก่อน");
+          return;
+        }
       }
 
       const response = await provider.connect();
@@ -184,7 +219,7 @@ export default function ConnectWallet() {
 
                 {notice.includes("Phantom") && (
                   <a
-                    href="https://phantom.app/download"
+                    href={PHANTOM_DOWNLOAD_URL}
                     target="_blank"
                     rel="noreferrer"
                     className="hm-link"
