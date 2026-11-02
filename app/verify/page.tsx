@@ -30,6 +30,7 @@ import { extractValidCitizenId } from "@/lib/thai-id";
 import {
   verifyFace,
   extractIdPhoto,
+  detectFaceOnCard,
   detectLandmarks,
   loadFaceModels,
   type FaceVerificationResult,
@@ -157,6 +158,52 @@ function challengeIcon(challenge: Challenge): string {
   }
 }
 
+/*
+ * ความสว่างเฉลี่ย (0-255) ที่ถือว่าน้อย/จ้าเกินไป
+ * ใช้แสดงคำเตือนตอนสแกนบัตรและสแกนหน้า
+ */
+const LIGHT_DARK_WARN = 60;
+const LIGHT_BRIGHT_WARN = 210;
+
+type Lighting = "ok" | "dark" | "bright";
+
+function lightingFromBrightness(
+  brightness: number
+): Lighting {
+  if (brightness < LIGHT_DARK_WARN) {
+    return "dark";
+  }
+
+  if (brightness > LIGHT_BRIGHT_WARN) {
+    return "bright";
+  }
+
+  return "ok";
+}
+
+function lightingLabel(
+  lighting: Lighting
+): string {
+  switch (lighting) {
+    case "dark":
+      return "⚠ แสงน้อยเกินไป";
+
+    case "bright":
+      return "⚠ แสงจ้าเกินไป";
+
+    default:
+      return "✓ แสงพอดี";
+  }
+}
+
+function lightingChipClass(
+  lighting: Lighting
+): string {
+  return lighting === "ok"
+    ? "bg-green-500/90 text-white"
+    : "bg-amber-500/95 text-white";
+}
+
 function maskWallet(address: string): string {
   if (address.length <= 12) return address;
 
@@ -201,6 +248,8 @@ export default function VerifyPage() {
 
   const idPhotoPromiseRef =
     useRef<Promise<string | null> | null>(null);
+
+  const idCheckBusyRef = useRef(false);
 
   const workerRef = useRef<Worker | null>(null);
   const scanTimerRef =
@@ -295,6 +344,15 @@ export default function VerifyPage() {
 
   const [faceHint, setFaceHint] =
     useState("กำลังเตรียมกล้องหน้า…");
+
+  const [idLighting, setIdLighting] =
+    useState<Lighting | null>(null);
+
+  const [idFaceFound, setIdFaceFound] =
+    useState<boolean | null>(null);
+
+  const [faceLighting, setFaceLighting] =
+    useState<Lighting | null>(null);
 
   const [faceResult, setFaceResult] =
     useState<FaceVerificationResult | null>(null);
@@ -737,6 +795,106 @@ export default function VerifyPage() {
 
   /*
   |--------------------------------------------------------------------------
+  | ID card live checks (lighting + face on card)
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (status !== "camera") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const timer = setInterval(async () => {
+      if (idCheckBusyRef.current) {
+        return;
+      }
+
+      const video = videoRef.current;
+      const brightnessCanvas =
+        brightnessCanvasRef.current;
+
+      if (
+        !video ||
+        !brightnessCanvas ||
+        video.videoWidth === 0 ||
+        video.videoHeight === 0
+      ) {
+        return;
+      }
+
+      idCheckBusyRef.current = true;
+
+      try {
+        /*
+         * ความสว่างบริเวณกลางภาพ (บริเวณที่วางบัตร)
+         */
+        brightnessCanvas.width = 64;
+        brightnessCanvas.height = 64;
+
+        const context =
+          brightnessCanvas.getContext("2d");
+
+        if (context) {
+          const sourceWidth =
+            video.videoWidth * 0.8;
+
+          const sourceHeight =
+            video.videoHeight * 0.7;
+
+          context.drawImage(
+            video,
+            (video.videoWidth - sourceWidth) / 2,
+            (video.videoHeight - sourceHeight) /
+              2,
+            sourceWidth,
+            sourceHeight,
+            0,
+            0,
+            64,
+            64
+          );
+
+          const imageData =
+            context.getImageData(0, 0, 64, 64);
+
+          if (!cancelled) {
+            setIdLighting(
+              lightingFromBrightness(
+                averageBrightness(imageData)
+              )
+            );
+          }
+        }
+
+        /*
+         * เจอรูปหน้าบนบัตรหรือไม่
+         */
+        const found =
+          await detectFaceOnCard(video);
+
+        if (!cancelled) {
+          setIdFaceFound(found);
+        }
+      } catch (error) {
+        console.warn(
+          "ID live check error:",
+          error
+        );
+      } finally {
+        idCheckBusyRef.current = false;
+      }
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [status]);
+
+  /*
+  |--------------------------------------------------------------------------
   | OCR auto scan
   |--------------------------------------------------------------------------
   */
@@ -863,6 +1021,8 @@ export default function VerifyPage() {
 
     setCapturedImage(null);
     idPhotoPromiseRef.current = null;
+    setIdLighting(null);
+    setIdFaceFound(null);
     setIdNumber("");
     setCameraError(null);
     setScanHint(
@@ -1301,6 +1461,12 @@ export default function VerifyPage() {
               averageBrightness(
                 imageData
               );
+
+            setFaceLighting(
+              lightingFromBrightness(
+                brightness
+              )
+            );
 
             /*
              * ใช้ช่วงกว้างพอสมควร
@@ -2079,11 +2245,44 @@ export default function VerifyPage() {
                 </div>
               </div>
 
+              {/* Lighting / face-on-card status */}
+              <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5 pointer-events-none">
+                {idLighting && (
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${lightingChipClass(
+                      idLighting
+                    )}`}
+                  >
+                    {lightingLabel(idLighting)}
+                  </span>
+                )}
+
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    idFaceFound === null
+                      ? "bg-slate-600/80 text-white"
+                      : idFaceFound
+                        ? "bg-green-500/90 text-white"
+                        : "bg-amber-500/95 text-white"
+                  }`}
+                >
+                  {idFaceFound === null
+                    ? "กำลังตรวจหารูปบนบัตร…"
+                    : idFaceFound
+                      ? "✓ พบรูปหน้าบนบัตร"
+                      : "⚠ ยังไม่พบรูปหน้าบนบัตร"}
+                </span>
+              </div>
+
               {/* Hint */}
               <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/75 to-transparent p-3">
                 <p className="text-white text-xs text-center font-medium">
                   {cameraError ||
-                    scanHint}
+                    (idLighting === "dark"
+                      ? "แสงน้อยเกินไป กรุณาเพิ่มแสงหรือขยับไปที่สว่างกว่านี้"
+                      : idLighting === "bright"
+                        ? "แสงจ้าเกินไป หลีกเลี่ยงแสงสะท้อนบนบัตร"
+                        : scanHint)}
                 </p>
               </div>
             </div>
@@ -2193,6 +2392,20 @@ export default function VerifyPage() {
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="w-[58%] aspect-[3/4] rounded-[50%] border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.18)]" />
               </div>
+
+              {/* Lighting status */}
+              {status === "face-scan" &&
+                faceLighting && (
+                  <div className="absolute top-3 left-3 pointer-events-none">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${lightingChipClass(
+                        faceLighting
+                      )}`}
+                    >
+                      {lightingLabel(faceLighting)}
+                    </span>
+                  </div>
+                )}
 
               {/* Challenge progress */}
               {status === "face-scan" &&
