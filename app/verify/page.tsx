@@ -768,7 +768,8 @@ export default function VerifyPage() {
     useCallback(
       (
         dataUrl: string,
-        detectedId: string
+        detectedId: string,
+        preparedIdPhoto?: string | null
       ) => {
         stopIdCamera();
 
@@ -780,11 +781,13 @@ export default function VerifyPage() {
          * เก็บไว้ใช้เทียบกับใบหน้าตอนสแกนหน้า
          */
         idPhotoPromiseRef.current =
-          dataUrlToImage(dataUrl)
-            .then((image) =>
-              extractIdPhoto(image)
-            )
-            .catch(() => null);
+          preparedIdPhoto
+            ? Promise.resolve(preparedIdPhoto)
+            : dataUrlToImage(dataUrl)
+                .then((image) =>
+                  extractIdPhoto(image)
+                )
+                .catch(() => null);
 
         setCameraError(null);
 
@@ -942,18 +945,48 @@ export default function VerifyPage() {
             extractValidCitizenId(text);
 
           if (found) {
-            setScanHint(
-              `ตรวจพบเลขบัตรที่ถูกต้อง: ${found}`
-            );
-
             const fullFrame =
               captureFrame();
 
             if (fullFrame) {
-              finishCapture(
-                fullFrame,
-                found
+              setScanHint(
+                "ตรวจพบเลขบัตร กำลังตรวจหาและปรับรูปหน้าบนบัตรให้ชัดขึ้น…"
               );
+
+              /*
+               * ประมวลผลภาพบัตรที่ถ่ายก่อนใช้งาน
+               * ถ้ายังหารูปหน้าบนบัตรไม่เจอ จะไม่ถ่าย
+               * และสแกนต่อ เพื่อไม่ให้ไปพังตอนสแกนหน้า
+               */
+              const frameImage =
+                await dataUrlToImage(
+                  fullFrame
+                );
+
+              const idPhoto =
+                await extractIdPhoto(
+                  frameImage
+                );
+
+              if (!scanTimerRef.current) {
+                return;
+              }
+
+              if (idPhoto) {
+                setScanHint(
+                  `ตรวจพบเลขบัตรที่ถูกต้อง: ${found}`
+                );
+
+                finishCapture(
+                  fullFrame,
+                  found,
+                  idPhoto
+                );
+              } else {
+                setScanHint(
+                  "พบเลขบัตรแล้ว แต่ยังไม่พบรูปหน้าบนบัตร กรุณาขยับบัตรให้รูปชัดและไม่สะท้อนแสง"
+                );
+              }
             }
           } else {
             setScanHint(
