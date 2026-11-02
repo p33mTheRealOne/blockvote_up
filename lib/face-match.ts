@@ -84,6 +84,43 @@ export async function detectLandmarks(
 }
 
 /* =========================================================
+   DETECT FACE ON ID CARD (LIVE VIDEO)
+   ใช้บอกผู้ใช้ตอนสแกนบัตรว่าเจอรูปหน้าบนบัตรหรือไม่
+========================================================= */
+
+export async function detectFaceOnCard(
+  video: HTMLVideoElement
+): Promise<boolean> {
+  const api = await getFaceApi();
+
+  await loadFaceModels();
+
+  const width = video.videoWidth;
+
+  if (!width) {
+    return false;
+  }
+
+  const detections = await api.detectAllFaces(
+    video,
+    new api.TinyFaceDetectorOptions({
+      inputSize: 416,
+      scoreThreshold: 0.3,
+    })
+  );
+
+  /*
+   * รูปบนบัตรอยู่ฝั่งขวาของบัตร
+   */
+  return detections.some(
+    (detection) =>
+      detection.box.x +
+        detection.box.width / 2 >
+      width * 0.4
+  );
+}
+
+/* =========================================================
    TYPES
 ========================================================= */
 
