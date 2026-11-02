@@ -505,8 +505,10 @@ type IdPhotoAttempt = {
   offsetX: number;
   offsetY: number;
   scale: number;
-  inputSize: 416 | 512;
-  scoreThreshold: number;
+  options: Array<{
+    inputSize: 416 | 512 | 608;
+    scoreThreshold: number;
+  }>;
 };
 
 type IdPhotoBox = {
@@ -665,89 +667,163 @@ export async function extractIdPhoto(
     }
 
     /*
-     * ลำดับการหาใบหน้าบนบัตร
-     * (ทำแบบ lazy เพื่อไม่สร้าง canvas ที่ไม่จำเป็น)
+     * รูปบนบัตรมักเล็กและไม่ชัด
+     * จึงตัดเป็นหลายบริเวณ -> ขยาย -> ปรับ contrast -> เพิ่มความคม
+     * แล้วค่อยตรวจหาใบหน้า
+     * (สร้างแบบ lazy เพื่อไม่สร้าง canvas ที่ไม่จำเป็น)
      */
+
+    const createEnhancedRegion = (
+      xRatio: number,
+      yRatio: number,
+      widthRatio: number,
+      heightRatio: number
+    ): IdPhotoAttempt => {
+      const cropX = Math.floor(width * xRatio);
+      const cropY = Math.floor(height * yRatio);
+
+      const cropWidth = Math.max(
+        1,
+        Math.floor(width * widthRatio)
+      );
+
+      const cropHeight = Math.max(
+        1,
+        Math.floor(height * heightRatio)
+      );
+
+      const scale = Math.min(
+        3,
+        Math.max(1, 640 / cropHeight)
+      );
+
+      const canvas =
+        document.createElement("canvas");
+
+      canvas.width = Math.max(
+        1,
+        Math.round(cropWidth * scale)
+      );
+
+      canvas.height = Math.max(
+        1,
+        Math.round(cropHeight * scale)
+      );
+
+      const context =
+        canvas.getContext("2d");
+
+      if (!context) {
+        throw new Error(
+          "ไม่สามารถสร้าง Canvas สำหรับประมวลผลรูปบัตรได้"
+        );
+      }
+
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+
+      context.drawImage(
+        source,
+        cropX,
+        cropY,
+        cropWidth,
+        cropHeight,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      enhanceIdPhoto(canvas);
+
+      return {
+        source: canvas,
+        offsetX: cropX,
+        offsetY: cropY,
+        scale,
+        options: [
+          { inputSize: 512, scoreThreshold: 0.15 },
+          { inputSize: 608, scoreThreshold: 0.08 },
+        ],
+      };
+    };
 
     const attempts: Array<
       () => IdPhotoAttempt
     > = [
+      // ภาพดิบทั้งใบ (เร็วที่สุด)
       () => ({
         source,
         offsetX: 0,
         offsetY: 0,
         scale: 1,
-        inputSize: 416,
-        scoreThreshold: 0.2,
+        options: [
+          { inputSize: 416, scoreThreshold: 0.2 },
+        ],
       }),
 
-      () => ({
-        source: createUpscaledImage(source, 3),
-        offsetX: 0,
-        offsetY: 0,
-        scale: 3,
-        inputSize: 512,
-        scoreThreshold: 0.15,
-      }),
+      // ฝั่งขวาของบัตร (ตำแหน่งรูปปกติ)
+      () => createEnhancedRegion(0.52, 0.03, 0.46, 0.94),
 
-      () => ({
-        source: cropIdPhotoRegion(source),
-        offsetX: Math.floor(width * 0.52),
-        offsetY: Math.floor(height * 0.03),
-        scale: 3,
-        inputSize: 512,
-        scoreThreshold: 0.15,
-      }),
+      // ฝั่งขวาแบบกว้าง
+      () => createEnhancedRegion(0.45, 0, 0.55, 1),
 
-      () => ({
-        source: cropIdPhotoRegionWide(source),
-        offsetX: Math.floor(width * 0.45),
-        offsetY: 0,
-        scale: 3,
-        inputSize: 512,
-        scoreThreshold: 0.1,
-      }),
+      // กรณีบัตรอยู่กลางภาพหรือเล็กกว่ากรอบ
+      () => createEnhancedRegion(0.3, 0.05, 0.5, 0.9),
+
+      // ทั้งภาพที่ประมวลผลให้ชัดขึ้น
+      () => createEnhancedRegion(0, 0, 1, 1),
     ];
+
+    const detectBoxes = async (
+      attempt: IdPhotoAttempt
+    ): Promise<IdPhotoBox[]> => {
+      for (const option of attempt.options) {
+        const detections =
+          await api.detectAllFaces(
+            attempt.source,
+            new api.TinyFaceDetectorOptions(
+              option
+            )
+          );
+
+        if (detections.length > 0) {
+          /*
+           * แปลงกรอบใบหน้ากลับมาเป็นพิกัดบนภาพบัตรต้นฉบับ
+           */
+          return detections.map(
+            (detection) => ({
+              x:
+                attempt.offsetX +
+                detection.box.x / attempt.scale,
+              y:
+                attempt.offsetY +
+                detection.box.y / attempt.scale,
+              width:
+                detection.box.width /
+                attempt.scale,
+              height:
+                detection.box.height /
+                attempt.scale,
+            })
+          );
+        }
+      }
+
+      return [];
+    };
 
     let faceBox: IdPhotoBox | null = null;
 
     for (const createAttempt of attempts) {
       try {
-        const attempt = createAttempt();
+        const boxes = await detectBoxes(
+          createAttempt()
+        );
 
-        const detections =
-          await api.detectAllFaces(
-            attempt.source,
-            new api.TinyFaceDetectorOptions({
-              inputSize: attempt.inputSize,
-              scoreThreshold:
-                attempt.scoreThreshold,
-            })
-          );
-
-        if (detections.length === 0) {
+        if (boxes.length === 0) {
           continue;
         }
-
-        /*
-         * แปลงกรอบใบหน้ากลับมาเป็นพิกัดบนภาพบัตรต้นฉบับ
-         */
-
-        const boxes: IdPhotoBox[] =
-          detections.map((detection) => ({
-            x:
-              attempt.offsetX +
-              detection.box.x / attempt.scale,
-            y:
-              attempt.offsetY +
-              detection.box.y / attempt.scale,
-            width:
-              detection.box.width /
-              attempt.scale,
-            height:
-              detection.box.height /
-              attempt.scale,
-          }));
 
         /*
          * รูปหลักบนบัตรอยู่ฝั่งขวาและใหญ่ที่สุด
