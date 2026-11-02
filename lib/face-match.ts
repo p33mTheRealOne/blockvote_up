@@ -58,8 +58,8 @@ export async function detectLandmarks(
     .detectSingleFace(
       video,
       new api.TinyFaceDetectorOptions({
-        inputSize: 320,
-        scoreThreshold: 0.5,
+        inputSize: 416,
+        scoreThreshold: 0.35,
       })
     )
     .withFaceLandmarks();
