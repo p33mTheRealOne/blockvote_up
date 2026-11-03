@@ -1,6 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 
-import { ELECTION_ID } from "@/lib/election";
+import { useElectionId } from "@/lib/use-election-id";
 
 /*
  * Shell: ผิวหน้าหลัก + เส้นคอลัมน์ที่เปิดเผย (rails) + colophon (Ft2)
@@ -12,6 +14,8 @@ export default function Shell({
 }: {
   children: ReactNode;
 }) {
+  const { electionId } = useElectionId();
+
   return (
     <div className="hm-page">
       <div className="hm-shell">
@@ -22,7 +26,7 @@ export default function Shell({
         <footer className="hm-foot">
           <span>BlockVote · Solana devnet</span>
           <span className="hm-tnum">
-            การเลือกตั้ง #{ELECTION_ID}
+            การเลือกตั้ง #{electionId ?? "–"}
           </span>
         </footer>
       </div>
