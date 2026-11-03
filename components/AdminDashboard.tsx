@@ -6,6 +6,9 @@ import * as anchor from "@coral-xyz/anchor";
 
 import Link from "next/link";
 
+import { buildSetElectionMessage } from "@/lib/election";
+import { useElectionId } from "@/lib/use-election-id";
+
 import {
   InitCryptoForm,
   RevealResultsForm,
@@ -154,6 +157,13 @@ export default function AdminDashboard() {
 
 
         {/* ==================================================
+            ACTIVE ELECTION (ทั้งเว็บ)
+        ================================================== */}
+
+        <ActiveElectionForm />
+
+
+        {/* ==================================================
             TABS
         ================================================== */}
 
@@ -280,6 +290,298 @@ export default function AdminDashboard() {
       </div>
 
     </main>
+  );
+}
+
+
+/* ============================================================
+   ACTIVE ELECTION (ตั้งค่า election ของทั้งเว็บ)
+============================================================ */
+
+function ActiveElectionForm() {
+
+  const { electionId: loadedId, error: configError } =
+    useElectionId();
+
+  const [savedId, setSavedId] =
+    useState<number | null>(null);
+
+  const [typedInput, setInput] =
+    useState<string | null>(null);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [success, setSuccess] =
+    useState("");
+
+  const currentId = savedId ?? loadedId;
+
+  // ช่องกรอกแสดง election ปัจจุบันจนกว่าจะพิมพ์เอง
+  const input =
+    typedInput ??
+    (currentId !== null ? String(currentId) : "");
+
+
+  const handleSave = async () => {
+
+    setError("");
+    setSuccess("");
+
+    const trimmed = input.trim();
+
+    if (!/^\d+$/.test(trimmed)) {
+      setError("Election ID must contain numbers only.");
+      return;
+    }
+
+    const id = Number(trimmed);
+
+    if (!Number.isSafeInteger(id)) {
+      setError("Election ID is too large.");
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      setError("Browser environment not available.");
+      return;
+    }
+
+    const provider =
+      window.phantom?.solana ??
+      window.solana;
+
+    if (!provider) {
+      setError("Phantom wallet was not detected.");
+      return;
+    }
+
+    if (!provider.publicKey) {
+      try {
+        await provider.connect();
+      } catch {
+        setError("Please connect your Phantom wallet first.");
+        return;
+      }
+    }
+
+    if (!provider.publicKey) {
+      setError("Phantom wallet is not connected.");
+      return;
+    }
+
+    if (provider.publicKey.toString() !== ADMIN_WALLET) {
+      setError(
+        "Only the admin wallet can change the active election."
+      );
+      return;
+    }
+
+    const signer = provider as unknown as {
+      signMessage?: (
+        message: Uint8Array,
+        display?: string
+      ) => Promise<{ signature: Uint8Array }>;
+    };
+
+    if (!signer.signMessage) {
+      setError(
+        "This wallet does not support message signing."
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+
+      // เซ็นข้อความด้วย wallet admin เพื่อให้ server ยืนยันตัวตน
+      const timestamp = Date.now();
+
+      const { signature } =
+        await signer.signMessage(
+          new TextEncoder().encode(
+            buildSetElectionMessage(id, timestamp)
+          ),
+          "utf8"
+        );
+
+      const signatureBase64 = btoa(
+        String.fromCharCode(...signature)
+      );
+
+      const response = await fetch(
+        "/api/admin/election-id",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            electionId: id,
+            timestamp,
+            signature: signatureBase64,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Failed to update the active election."
+        );
+      }
+
+      setSavedId(id);
+
+      setSuccess(
+        `Election #${id} is now the active election for the whole website.`
+      );
+
+    } catch (err) {
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to update the active election."
+      );
+
+    } finally {
+
+      setLoading(false);
+
+    }
+  };
+
+
+  return (
+    <div
+      className="admin-card"
+      style={{ marginBottom: 24 }}
+    >
+
+      <div className="form-header">
+        <div className="form-icon">
+          🗳️
+        </div>
+
+        <div>
+          <h2>Active Election</h2>
+
+          <p>
+            Election used by the whole website
+            (verify, vote, scoreboard).
+            Currently:{" "}
+            <strong>
+              {currentId !== null
+                ? `#${currentId}`
+                : configError
+                  ? "unavailable"
+                  : "loading…"}
+            </strong>
+          </p>
+        </div>
+      </div>
+
+      <div className="form-grid">
+        <div className="form-group">
+          <label htmlFor="active-election-id">
+            Election ID
+          </label>
+
+          <input
+            id="active-election-id"
+            type="text"
+            inputMode="numeric"
+            placeholder="e.g. 8"
+            value={input}
+            onChange={(e) =>
+              setInput(e.target.value)
+            }
+            disabled={loading}
+          />
+
+          <span className="input-hint">
+            The election must already exist on-chain.
+            You will be asked to sign a message with
+            the admin wallet.
+          </span>
+        </div>
+      </div>
+
+      {configError && !error && (
+        <div className="admin-message admin-error">
+          <div className="admin-message-icon">
+            !
+          </div>
+
+          <div>
+            <strong>
+              Could not load current setting
+            </strong>
+
+            <p>{configError}</p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="admin-message admin-error">
+          <div className="admin-message-icon">
+            !
+          </div>
+
+          <div>
+            <strong>
+              Update failed
+            </strong>
+
+            <p>{error}</p>
+          </div>
+        </div>
+      )}
+
+      {success && (
+        <div className="admin-message admin-success">
+          <div className="admin-message-icon">
+            ✓
+          </div>
+
+          <div>
+            <strong>
+              Active election updated
+            </strong>
+
+            <p>{success}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="form-actions">
+        <button
+          type="button"
+          className="primary-admin-button"
+          onClick={handleSave}
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <span className="admin-button-spinner" />
+              Saving...
+            </>
+          ) : (
+            <>
+              Set Active Election
+            </>
+          )}
+        </button>
+      </div>
+
+    </div>
   );
 }
 
