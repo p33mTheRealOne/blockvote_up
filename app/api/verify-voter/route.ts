@@ -322,6 +322,38 @@ export async function POST(
       if (
         insertError.code === "23505"
       ) {
+        // ยืนยันว่า "ซ้ำจริง" = มีแถวของบัตรนี้ใน election นี้อยู่แล้ว
+        // ถ้าไม่มีแถวแบบนั้น แปลว่า unique constraint ในฐานข้อมูล
+        // ไม่ได้แยกตาม election (ต้องรัน supabase/verified_voters_per_election.sql)
+        const { data: existing } =
+          await supabaseAdmin
+            .from("verified_voters")
+            .select("id")
+            .eq(
+              "election_id",
+              Number(electionIdBig)
+            )
+            .eq(
+              "citizen_id_hash",
+              citizenIdHash
+            )
+            .maybeSingle();
+
+        if (!existing) {
+          console.error(
+            "verified_voters unique constraint is not per-election:",
+            insertError
+          );
+
+          return NextResponse.json(
+            {
+              error:
+                "ฐานข้อมูลตั้งค่าไม่ถูกต้อง (unique constraint ของ verified_voters ต้องแยกตามการเลือกตั้ง) กรุณาติดต่อผู้ดูแลระบบ",
+            },
+            { status: 500 }
+          );
+        }
+
         return NextResponse.json(
           {
             error:
