@@ -5,6 +5,7 @@ import {
   Transaction,
   VersionedTransaction,
   SystemProgram,
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 
 import {
@@ -264,4 +265,75 @@ export async function registerVoterOnChain(
     .rpc();
 
   return tx;
+}
+
+
+/* =========================================================
+   AIRDROP TO VERIFIED VOTER
+   โอน SOL (devnet) จาก admin wallet ให้ wallet ที่ผ่านการยืนยันตัวตน
+   เพื่อใช้จ่ายค่าธรรมเนียมตอนโหวต
+========================================================= */
+
+// 0.002 SOL
+export const VOTER_AIRDROP_LAMPORTS = 2_000_000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) =>
+    setTimeout(resolve, ms)
+  );
+}
+
+export async function sendVoterAirdrop(
+  electionId: number | bigint,
+  walletAddress: string
+): Promise<string> {
+  const voterWallet = new PublicKey(walletAddress);
+
+  /*
+   * โอนให้เฉพาะ wallet ที่ลงทะเบียนสิทธิ์บนเชนแล้วเท่านั้น
+   * (Voter PDA จะถูกสร้างหลังผ่านการยืนยันตัวตนครบทุกขั้นเท่านั้น)
+   * RPC อาจเห็นบัญชีช้าเล็กน้อย จึงลองซ้ำไม่กี่ครั้ง
+   */
+  let registered = false;
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    registered = await isVoterAlreadyRegistered(
+      electionId,
+      walletAddress
+    );
+
+    if (registered) {
+      break;
+    }
+
+    await sleep(700);
+  }
+
+  if (!registered) {
+    throw new Error(
+      "Wallet นี้ยังไม่ได้ลงทะเบียนสิทธิ์ จึงไม่โอน SOL ให้"
+    );
+  }
+
+  const admin = loadAdminKeypair();
+
+  const connection = new Connection(
+    RPC_URL,
+    "confirmed"
+  );
+
+  const tx = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: admin.publicKey,
+      toPubkey: voterWallet,
+      lamports: VOTER_AIRDROP_LAMPORTS,
+    })
+  );
+
+  return await sendAndConfirmTransaction(
+    connection,
+    tx,
+    [admin],
+    { commitment: "confirmed" }
+  );
 }
