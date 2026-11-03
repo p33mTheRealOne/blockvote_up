@@ -19,11 +19,10 @@ import {
 } from "@/lib/anchor";
 
 import idl from "@/lib/idl/blockvote.json";
+import { ELECTION_ID } from "@/lib/election";
 
 
-/* =========================================================
-   TYPES
-========================================================= */
+/* ========================================================= TYPES ========================================================= */
 
 export interface VoteCommitParams {
   walletProvider: PhantomVoteProvider;
@@ -38,39 +37,27 @@ export interface VoteCommitResult {
 }
 
 
-/* =========================================================
-   PHANTOM PROVIDER
-========================================================= */
+/* ========================================================= PHANTOM PROVIDER ========================================================= */
 
 export interface PhantomVoteProvider {
   publicKey?: PublicKey;
 
-  connect: (options?: {
-    onlyIfTrusted?: boolean;
-  }) => Promise<{
+  connect: (options?: { onlyIfTrusted?: boolean; }) => Promise<{
     publicKey: PublicKey;
   }>;
 
-  signTransaction: (
-    transaction: Transaction
-  ) => Promise<Transaction>;
+  signTransaction: ( transaction: Transaction ) => Promise<Transaction>;
 
-  signAllTransactions?: (
-    transactions: Transaction[]
-  ) => Promise<Transaction[]>;
+  signAllTransactions?: ( transactions: Transaction[] ) => Promise<Transaction[]>;
 
   disconnect?: () => Promise<void>;
 }
 
 
-/* =========================================================
-   ANCHOR WALLET
-========================================================= */
+/* ========================================================= ANCHOR WALLET ========================================================= */
 
 class PhantomWallet {
-  constructor(
-    private readonly provider: PhantomVoteProvider
-  ) {}
+  constructor( private readonly provider: PhantomVoteProvider ) {}
 
   get publicKey(): PublicKey {
     if (!this.provider.publicKey) {
@@ -106,13 +93,9 @@ class PhantomWallet {
 }
 
 
-/* =========================================================
-   GET ANCHOR PROGRAM
-========================================================= */
+/* ========================================================= GET ANCHOR PROGRAM ========================================================= */
 
-function getVoteProgram(
-  walletProvider: PhantomVoteProvider
-): any {
+function getVoteProgram( walletProvider: PhantomVoteProvider ): any {
   const wallet = new PhantomWallet(
     walletProvider
   );
@@ -133,14 +116,9 @@ function getVoteProgram(
 }
 
 
-/* =========================================================
-   READ ELECTION CRYPTO PUBLIC KEY
-========================================================= */
+/* ========================================================= READ ELECTION CRYPTO PUBLIC KEY ========================================================= */
 
-async function getElectionEncryptionKey(
-  electionId: number,
-  electionPda: PublicKey
-): Promise<Uint8Array> {
+async function getElectionEncryptionKey( electionId: number, electionPda: PublicKey ): Promise<Uint8Array> {
   const [cryptoPda] =
     getElectionCryptoPda(electionId);
 
@@ -155,14 +133,7 @@ async function getElectionEncryptionKey(
     );
   }
 
-  /*
-   * ElectionCrypto layout:
-   *
-   * discriminator  8
-   * election       32
-   * public_key     32
-   * bump           1
-   */
+  /* * ElectionCrypto layout: * * discriminator 8 * election 32 * public_key 32 * bump 1 */
 
   const data = account.data;
 
@@ -208,15 +179,9 @@ async function getElectionEncryptionKey(
 }
 
 
-/* =========================================================
-   CHECK PARTY EXISTS
-========================================================= */
+/* ========================================================= CHECK PARTY EXISTS ========================================================= */
 
-async function checkPartyExists(
-  electionId: number,
-  partyId: number,
-  electionPda: PublicKey
-): Promise<void> {
+async function checkPartyExists( electionId: number, partyId: number, electionPda: PublicKey ): Promise<void> {
   const [partyPda] =
     getPartyPda(
       electionId,
@@ -234,16 +199,7 @@ async function checkPartyExists(
     );
   }
 
-  /*
-   * Party layout:
-   *
-   * discriminator  8
-   * election       32
-   * party_id       8
-   * name           4 + variable
-   * logo_url       4 + variable
-   * bump           1
-   */
+  /* * Party layout: * * discriminator 8 * election 32 * party_id 8 * name 4 + variable * logo_url 4 + variable * bump 1 */
 
   const data = partyAccount.data;
 
@@ -286,15 +242,9 @@ async function checkPartyExists(
 }
 
 
-/* =========================================================
-   CHECK VOTER
-========================================================= */
+/* ========================================================= CHECK VOTER ========================================================= */
 
-async function checkVoter(
-  electionId: number,
-  wallet: PublicKey,
-  electionPda: PublicKey
-): Promise<void> {
+async function checkVoter( electionId: number, wallet: PublicKey, electionPda: PublicKey ): Promise<void> {
   const [voterPda] =
     getVoterPda(
       electionId,
@@ -312,16 +262,7 @@ async function checkVoter(
     );
   }
 
-  /*
-   * Voter layout:
-   *
-   * discriminator  8
-   * election        32
-   * wallet          32
-   * registered_at   8
-   * voted           1
-   * bump            1
-   */
+  /* * Voter layout: * * discriminator 8 * election 32 * wallet 32 * registered_at 8 * voted 1 * bump 1 */
 
   const data =
     voterAccount.data;
@@ -379,13 +320,9 @@ async function checkVoter(
 }
 
 
-/* =========================================================
-   CHECK ELECTION TIME
-========================================================= */
+/* ========================================================= CHECK ELECTION TIME ========================================================= */
 
-async function checkElectionTime(
-  electionPda: PublicKey
-): Promise<void> {
+async function checkElectionTime( electionPda: PublicKey ): Promise<void> {
   const account =
     await connection.getAccountInfo(
       electionPda
@@ -397,19 +334,7 @@ async function checkElectionTime(
     );
   }
 
-  /*
-   * Election layout:
-   *
-   * discriminator  8
-   * admin           32
-   * election_id     8
-   * name            4 + variable
-   * description     4 + variable
-   * start_unix      8
-   * end_unix        8
-   * bump            1
-   * status          1
-   */
+  /* * Election layout: * * discriminator 8 * admin 32 * election_id 8 * name 4 + variable * description 4 + variable * start_unix 8 * end_unix 8 * bump 1 * status 1 */
 
   const data =
     account.data;
@@ -506,14 +431,9 @@ async function checkElectionTime(
 }
 
 
-/* =========================================================
-   CREATE ENCRYPTED BALLOT
-========================================================= */
+/* ========================================================= CREATE ENCRYPTED BALLOT ========================================================= */
 
-function createEncryptedBallot(
-  partyId: number,
-  encryptionPublicKey: Uint8Array
-): {
+function createEncryptedBallot( partyId: number, encryptionPublicKey: Uint8Array ): {
   encryptedVote: Uint8Array;
   nonceHex: string;
 } {
@@ -534,11 +454,7 @@ function createEncryptedBallot(
     );
   }
 
-  /*
-   * Plaintext:
-   *
-   * party_id = uint64 little endian
-   */
+  /* * Plaintext: * * party_id = uint64 little endian */
 
   const ballot =
     new Uint8Array(8);
@@ -554,32 +470,19 @@ function createEncryptedBallot(
     true
   );
 
-  /*
-   * Generate ephemeral keypair
-   */
+  /* * Generate ephemeral keypair */
 
   const ephemeralKeypair =
     nacl.box.keyPair();
 
-  /*
-   * Generate nonce
-   */
+  /* * Generate nonce */
 
   const nonce =
     nacl.randomBytes(
       nacl.box.nonceLength
     );
 
-  /*
-   * Encrypt:
-   *
-   * nacl.box(
-   *   plaintext,
-   *   nonce,
-   *   electionPublicKey,
-   *   ephemeralSecretKey
-   * )
-   */
+  /* * Encrypt: * * nacl.box( * plaintext, * nonce, * electionPublicKey, * ephemeralSecretKey * ) */
 
   const ciphertext =
     nacl.box(
@@ -595,15 +498,7 @@ function createEncryptedBallot(
     );
   }
 
-  /*
-   * Final format:
-   *
-   * [ephemeral public key 32]
-   * [nonce               24]
-   * [ciphertext           24]
-   *
-   * Total = 80 bytes
-   */
+  /* * Final format: * * [ephemeral public key 32] * [nonce 24] * [ciphertext 24] * * Total = 80 bytes */
 
   const encryptedVote =
     new Uint8Array(
@@ -635,11 +530,7 @@ function createEncryptedBallot(
     );
   }
 
-  /*
-   * nonce -> hex
-   *
-   * เก็บไว้ให้ user ใช้ reveal ภายหลัง
-   */
+  /* * nonce -> hex * * เก็บไว้ให้ user ใช้ reveal ภายหลัง */
 
   const nonceHex =
     Array.from(nonce)
@@ -658,13 +549,9 @@ function createEncryptedBallot(
 }
 
 
-/* =========================================================
-   SUBMIT VOTE COMMIT
-========================================================= */
+/* ========================================================= SUBMIT VOTE COMMIT ========================================================= */
 
-export async function submitVoteCommit(
-  params: VoteCommitParams
-): Promise<VoteCommitResult> {
+export async function submitVoteCommit( params: VoteCommitParams ): Promise<VoteCommitResult> {
   const {
     walletProvider,
     election,
@@ -688,16 +575,7 @@ export async function submitVoteCommit(
   const wallet =
     walletProvider.publicKey;
 
-  /*
-   * Determine election ID from the
-   * election account.
-   *
-   * The current application uses:
-   *
-   * ELECTION_ID = 6
-   */
-
-  const ELECTION_ID = 6;
+  /* * Determine election ID from the * election account. * * ใช้ ELECTION_ID กลางจาก * lib/election.ts */
 
   const [
     electionPda,
@@ -705,10 +583,7 @@ export async function submitVoteCommit(
     ELECTION_ID
   );
 
-  /*
-   * Make sure the supplied election
-   * address is the correct PDA.
-   */
+  /* * Make sure the supplied election * address is the correct PDA. */
 
   if (
     !election.equals(
@@ -720,21 +595,13 @@ export async function submitVoteCommit(
     );
   }
 
-  /*
-   * ---------------------------------------------------------
-   * CHECK ELECTION
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * CHECK ELECTION * --------------------------------------------------------- */
 
   await checkElectionTime(
     electionPda
   );
 
-  /*
-   * ---------------------------------------------------------
-   * CHECK VOTER
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * CHECK VOTER * --------------------------------------------------------- */
 
   await checkVoter(
     ELECTION_ID,
@@ -742,11 +609,7 @@ export async function submitVoteCommit(
     electionPda
   );
 
-  /*
-   * ---------------------------------------------------------
-   * CHECK PARTY
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * CHECK PARTY * --------------------------------------------------------- */
 
   await checkPartyExists(
     ELECTION_ID,
@@ -754,11 +617,7 @@ export async function submitVoteCommit(
     electionPda
   );
 
-  /*
-   * ---------------------------------------------------------
-   * READ ENCRYPTION KEY
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * READ ENCRYPTION KEY * --------------------------------------------------------- */
 
   const encryptionPublicKey =
     await getElectionEncryptionKey(
@@ -766,11 +625,7 @@ export async function submitVoteCommit(
       electionPda
     );
 
-  /*
-   * ---------------------------------------------------------
-   * CREATE ENCRYPTED BALLOT
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * CREATE ENCRYPTED BALLOT * --------------------------------------------------------- */
 
   const {
     encryptedVote,
@@ -781,11 +636,7 @@ export async function submitVoteCommit(
       encryptionPublicKey
     );
 
-  /*
-   * ---------------------------------------------------------
-   * DERIVE VOTE PDA
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * DERIVE VOTE PDA * --------------------------------------------------------- */
 
   const [
     votePda,
@@ -794,9 +645,7 @@ export async function submitVoteCommit(
     wallet
   );
 
-  /*
-   * Check if vote account already exists.
-   */
+  /* * Check if vote account already exists. */
 
   const existingVote =
     await connection.getAccountInfo(
@@ -809,33 +658,14 @@ export async function submitVoteCommit(
     );
   }
 
-  /*
-   * ---------------------------------------------------------
-   * CREATE ANCHOR PROGRAM
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * CREATE ANCHOR PROGRAM * --------------------------------------------------------- */
 
   const program =
     getVoteProgram(
       walletProvider
     );
 
-  /*
-   * ---------------------------------------------------------
-   * SUBMIT
-   * ---------------------------------------------------------
-   *
-   * IMPORTANT:
-   *
-   * We send ONLY:
-   *
-   *   election_id
-   *   encrypted_vote
-   *
-   * partyId is NOT sent as plaintext.
-   *
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * SUBMIT * --------------------------------------------------------- * * IMPORTANT: * * We send ONLY: * * election_id * encrypted_vote * * partyId is NOT sent as plaintext. * * --------------------------------------------------------- */
 
   const tx =
     await program.methods
@@ -852,14 +682,7 @@ export async function submitVoteCommit(
       })
       .rpc();
 
-  /*
-   * ---------------------------------------------------------
-   * SAVE NONCE LOCALLY
-   * ---------------------------------------------------------
-   *
-   * This is only a convenience backup.
-   * The nonce is also returned to the UI.
-   */
+  /* * --------------------------------------------------------- * SAVE NONCE LOCALLY * --------------------------------------------------------- * * This is only a convenience backup. * The nonce is also returned to the UI. */
 
   try {
     const storageKey =
@@ -873,11 +696,7 @@ export async function submitVoteCommit(
     // localStorage may be unavailable.
   }
 
-  /*
-   * ---------------------------------------------------------
-   * SUCCESS
-   * ---------------------------------------------------------
-   */
+  /* * --------------------------------------------------------- * SUCCESS * --------------------------------------------------------- */
 
   return {
     tx,
