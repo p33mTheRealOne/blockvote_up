@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import type { PhantomWalletProvider } from "@/lib/anchor";
-import { ELECTION_ID } from "@/lib/election";
+import { useElectionId } from "@/lib/use-election-id";
 import {
   type DecryptPreview,
   decryptElectionVotes,
@@ -51,7 +51,15 @@ function Message({
 ============================================================ */
 
 export function InitCryptoForm() {
-  const [electionId, setElectionId] = useState(String(ELECTION_ID));
+  const { electionId: activeElectionId } = useElectionId();
+
+  // ค่าเริ่มต้นคือ election ที่เปิดใช้งานอยู่ (จนกว่าจะพิมพ์เอง)
+  const [typedElectionId, setElectionId] = useState<
+    string | null
+  >(null);
+  const electionId =
+    typedElectionId ??
+    (activeElectionId !== null ? String(activeElectionId) : "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -153,7 +161,15 @@ export function InitCryptoForm() {
 ============================================================ */
 
 export function RevealResultsForm() {
-  const [electionId, setElectionId] = useState(String(ELECTION_ID));
+  const { electionId: activeElectionId } = useElectionId();
+
+  // ค่าเริ่มต้นคือ election ที่เปิดใช้งานอยู่ (จนกว่าจะพิมพ์เอง)
+  const [typedElectionId, setElectionId] = useState<
+    string | null
+  >(null);
+  const electionId =
+    typedElectionId ??
+    (activeElectionId !== null ? String(activeElectionId) : "");
   const [keyFileText, setKeyFileText] = useState("");
   const [keyFileName, setKeyFileName] = useState("");
 
