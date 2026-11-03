@@ -12,9 +12,7 @@ import {
    CONFIG
 ========================================================= */
 
-import { ELECTION_ID } from "@/lib/election";
 
-export { ELECTION_ID };
 
 const connection = new Connection(
   RPC_ENDPOINT,
@@ -183,8 +181,7 @@ class ByteReader {
 ========================================================= */
 
 export async function fetchElection(
-  electionId: number | bigint =
-    ELECTION_ID
+  electionId: number | bigint
 ): Promise<ElectionResult | null> {
   try {
     /*
@@ -523,7 +520,7 @@ export async function isVoterRegistered(
     | string,
   electionId:
     | number
-    | bigint = ELECTION_ID
+    | bigint
 ): Promise<boolean> {
   try {
     const wallet =
@@ -572,7 +569,7 @@ export async function fetchVoterStatus(
     | string,
   electionId:
     | number
-    | bigint = ELECTION_ID
+    | bigint
 ): Promise<VoterStatus | null> {
   try {
     const wallet =
@@ -812,7 +809,7 @@ export type ElectionStatus =
 export async function getElectionStatus(
   electionId:
     | number
-    | bigint = ELECTION_ID
+    | bigint
 ): Promise<ElectionStatus | null> {
   const result =
     await fetchElection(
