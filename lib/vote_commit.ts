@@ -19,7 +19,6 @@ import {
 } from "@/lib/anchor";
 
 import idl from "@/lib/idl/blockvote.json";
-import { ELECTION_ID } from "@/lib/election";
 
 
 /* ========================================================= TYPES ========================================================= */
@@ -27,6 +26,7 @@ import { ELECTION_ID } from "@/lib/election";
 export interface VoteCommitParams {
   walletProvider: PhantomVoteProvider;
   election: PublicKey;
+  electionId: number;
   partyId: number;
 }
 
@@ -555,6 +555,7 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
   const {
     walletProvider,
     election,
+    electionId,
     partyId,
   } = params;
 
@@ -575,12 +576,12 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
   const wallet =
     walletProvider.publicKey;
 
-  /* * Determine election ID from the * election account. * * ใช้ ELECTION_ID กลางจาก * lib/election.ts */
+  /* * election ID ที่เปิดใช้งานอยู่ (admin ตั้งไว้ทั้งเว็บ) * ส่งเข้ามาจากหน้า /vote ผ่าน params */
 
   const [
     electionPda,
   ] = getElectionPda(
-    ELECTION_ID
+    electionId
   );
 
   /* * Make sure the supplied election * address is the correct PDA. */
@@ -591,7 +592,7 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
     )
   ) {
     throw new Error(
-      "Election address ไม่ตรงกับ ELECTION_ID"
+      "Election address ไม่ตรงกับ election ที่เปิดใช้งานอยู่"
     );
   }
 
@@ -604,7 +605,7 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
   /* * --------------------------------------------------------- * CHECK VOTER * --------------------------------------------------------- */
 
   await checkVoter(
-    ELECTION_ID,
+    electionId,
     wallet,
     electionPda
   );
@@ -612,7 +613,7 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
   /* * --------------------------------------------------------- * CHECK PARTY * --------------------------------------------------------- */
 
   await checkPartyExists(
-    ELECTION_ID,
+    electionId,
     partyId,
     electionPda
   );
@@ -621,7 +622,7 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
 
   const encryptionPublicKey =
     await getElectionEncryptionKey(
-      ELECTION_ID,
+      electionId,
       electionPda
     );
 
@@ -641,7 +642,7 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
   const [
     votePda,
   ] = getVotePda(
-    ELECTION_ID,
+    electionId,
     wallet
   );
 
@@ -671,7 +672,7 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
     await program.methods
       .vote(
         new anchor.BN(
-          ELECTION_ID
+          electionId
         ),
         Buffer.from(
           encryptedVote
@@ -686,7 +687,7 @@ export async function submitVoteCommit( params: VoteCommitParams ): Promise<Vote
 
   try {
     const storageKey =
-      `blockvote:nonce:${ELECTION_ID}:${wallet.toBase58()}`;
+      `blockvote:nonce:${electionId}:${wallet.toBase58()}`;
 
     localStorage.setItem(
       storageKey,
