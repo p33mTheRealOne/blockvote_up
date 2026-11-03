@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 
 import { extractValidCitizenId } from "@/lib/thai-id";
-import { ELECTION_ID } from "@/lib/election";
+import { useElectionId } from "@/lib/use-election-id";
 import {
   verifyFace,
   extractIdPhoto,
@@ -76,6 +76,7 @@ type ScanStatus =
   | "face-failed";
 
 type ElectionStatus = {
+  electionId?: string;
   canVerify: boolean;
   state: "not-started" | "active" | "ended";
   startUnix: number;
@@ -234,6 +235,12 @@ async function dataUrlToImage(
 
 export default function VerifyPage() {
   const router = useRouter();
+
+  // election ที่ admin ตั้งไว้ทั้งเว็บ (ดึงจาก /api/config)
+  const {
+    electionId,
+    error: configError,
+  } = useElectionId();
 
   /*
   |--------------------------------------------------------------------------
@@ -411,6 +418,12 @@ export default function VerifyPage() {
   */
 
     useEffect(() => {
+    if (electionId === null) {
+        return;
+    }
+
+    const activeElectionId: number = electionId;
+
     let cancelled = false;
 
     async function checkWallet() {
@@ -439,7 +452,7 @@ export default function VerifyPage() {
             response.publicKey.toString();
 
         const voterStatus =
-        await fetchVoterStatus(address, ELECTION_ID);
+        await fetchVoterStatus(address, activeElectionId);
 
         if (voterStatus?.verified) {
         router.replace("/vote");
@@ -465,7 +478,7 @@ export default function VerifyPage() {
     return () => {
         cancelled = true;
     };
-    }, [router]);
+    }, [router, electionId]);
 
   /*
   |--------------------------------------------------------------------------
@@ -483,7 +496,7 @@ export default function VerifyPage() {
     async function checkElection() {
       try {
         const response = await fetch(
-          `/api/election-status?electionId=${ELECTION_ID}`,
+          "/api/election-status",
           {
             method: "GET",
             cache: "no-store",
@@ -1843,7 +1856,7 @@ export default function VerifyPage() {
        */
       const electionResponse =
         await fetch(
-          `/api/election-status?electionId=${ELECTION_ID}`,
+          "/api/election-status",
           {
             method: "GET",
             cache: "no-store",
@@ -1884,8 +1897,10 @@ export default function VerifyPage() {
                 "application/json",
             },
             body: JSON.stringify({
+              // server ถือ election ที่เปิดใช้งานเป็นหลัก
+              // ค่านี้ใช้ตรวจว่า admin เปลี่ยน election ระหว่างที่กำลังยืนยันหรือไม่
               electionId:
-                ELECTION_ID,
+                electionId ?? undefined,
 
               walletAddress,
 
@@ -1956,17 +1971,22 @@ export default function VerifyPage() {
           </div>
 
           <h1 className="text-xl font-bold text-slate-800">
-            กำลังตรวจสอบ Wallet
+            {configError
+              ? "โหลดการตั้งค่าไม่สำเร็จ"
+              : "กำลังตรวจสอบ Wallet"}
           </h1>
 
           <p className="mt-2 text-sm text-slate-500">
-            กรุณารอสักครู่…
+            {configError ??
+              "กรุณารอสักครู่…"}
           </p>
 
-          <Loader2
-            className="mx-auto mt-5 animate-spin text-blue-600"
-            size={24}
-          />
+          {!configError && (
+            <Loader2
+              className="mx-auto mt-5 animate-spin text-blue-600"
+              size={24}
+            />
+          )}
         </div>
       </main>
       </Shell>
@@ -2056,7 +2076,11 @@ export default function VerifyPage() {
 
                 <p className="mt-1 font-semibold text-slate-700">
                   {electionStatus.name ||
-                    `Election #${ELECTION_ID}`}
+                    `Election #${
+                      electionStatus.electionId ??
+                      electionId ??
+                      "-"
+                    }`}
                 </p>
               </div>
 
