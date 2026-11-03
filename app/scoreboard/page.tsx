@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
-import { ELECTION_ID } from "@/lib/election";
+import { useElectionId } from "@/lib/use-election-id";
 import { fetchScoreboard } from "@/lib/reveal";
 
 import SiteNav from "@/components/SiteNav";
@@ -52,6 +52,7 @@ function Logo({ name, url }: { name: string; url: string }) {
 /* ---------- Page (Stat-Led) ---------- */
 
 export default function ScoreboardPage() {
+  const { electionId, error: configError } = useElectionId();
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -59,18 +60,24 @@ export default function ScoreboardPage() {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   useEffect(() => {
+    if (electionId === null) {
+      return;
+    }
+
+    const activeElectionId: number = electionId;
+
     let cancelled = false;
 
     setLoading(true);
     setError("");
 
-    fetchScoreboard(ELECTION_ID)
+    fetchScoreboard(activeElectionId)
       .then((result) => {
         if (cancelled) return;
 
         if (!result) {
           setBoard(null);
-          setError(`ไม่พบ Election ${ELECTION_ID} บนเชน`);
+          setError(`ไม่พบ Election ${activeElectionId} บนเชน`);
         } else {
           setBoard(result);
           setUpdatedAt(new Date());
@@ -90,7 +97,11 @@ export default function ScoreboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, electionId]);
+
+  // ถ้าโหลดการตั้งค่า election ไม่ได้ ให้แสดง error นั้นแทนการหมุนค้าง
+  const displayError = error || configError || "";
+  const displayLoading = loading && !configError;
 
   const result = board?.result ?? null;
   const total = result?.totalVotes ?? 0;
@@ -113,7 +124,7 @@ export default function ScoreboardPage() {
 
           {/* ---------- Loading ---------- */}
 
-          {loading && !board && (
+          {displayLoading && !board && (
             <p className="hm-wait" role="status">
               <Loader2 className="animate-spin" size={18} />
               กำลังอ่านผลคะแนนจากเชน…
@@ -122,13 +133,13 @@ export default function ScoreboardPage() {
 
           {/* ---------- Error ---------- */}
 
-          {error && (
+          {displayError && (
             <div className="hm-note hm-note--error" role="alert">
               <p>
                 <strong>อ่านผลคะแนนไม่สำเร็จ</strong>
               </p>
 
-              <p>{error}</p>
+              <p>{displayError}</p>
             </div>
           )}
 
