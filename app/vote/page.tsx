@@ -21,7 +21,7 @@ import {
   type PartyData,
 } from "@/lib/solana-program";
 
-import { ELECTION_ID } from "@/lib/election";
+import { useElectionId } from "@/lib/use-election-id";
 import {
   submitVoteCommit,
   type VoteCommitResult,
@@ -101,6 +101,12 @@ function PartyLogo({
 export default function VotePage() {
   const router = useRouter();
 
+  // election ที่ admin ตั้งไว้ทั้งเว็บ (ดึงจาก /api/config)
+  const {
+    electionId,
+    error: configError,
+  } = useElectionId();
+
   /* =======================================================
      ACCESS CONTROL
   ======================================================= */
@@ -115,6 +121,12 @@ export default function VotePage() {
     useState(false);
 
   useEffect(() => {
+    if (electionId === null) {
+      return;
+    }
+
+    const activeElectionId: number = electionId;
+
     let cancelled = false;
 
     async function checkAccess() {
@@ -180,14 +192,14 @@ export default function VotePage() {
        * This is NOT based on localStorage.
        *
        * If the wallet has a valid Voter account for
-       * Election ID 6, the user can enter /vote.
+       * the active election, the user can enter /vote.
        */
 
       try {
         const status =
           await fetchVoterStatus(
             address,
-            ELECTION_ID
+            activeElectionId
           );
 
         if (cancelled) {
@@ -225,9 +237,9 @@ export default function VotePage() {
       cancelled = true;
     };
 
-    // We intentionally run this once on page load.
+    // run ใหม่เมื่อ election ที่เปิดใช้งานโหลดเสร็จ/เปลี่ยน
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [electionId]);
 
   /* =======================================================
      ELECTION / PARTY DATA
@@ -250,10 +262,13 @@ export default function VotePage() {
 
   useEffect(() => {
     if (
-      accessState !== "granted"
+      accessState !== "granted" ||
+      electionId === null
     ) {
       return;
     }
+
+    const activeElectionId: number = electionId;
 
     let cancelled = false;
 
@@ -262,12 +277,12 @@ export default function VotePage() {
       setError(null);
 
       /*
-       * Fetch Election ID 6 from Solana.
+       * Fetch the active election from Solana.
        */
 
       const result =
         await fetchElection(
-          ELECTION_ID
+          activeElectionId
         );
 
       if (cancelled) {
@@ -276,7 +291,7 @@ export default function VotePage() {
 
       if (!result) {
         setError(
-          `ไม่พบข้อมูลการเลือกตั้งนี้ในเชน (election id = ${ELECTION_ID})`
+          `ไม่พบข้อมูลการเลือกตั้งนี้ในเชน (election id = ${activeElectionId})`
         );
 
         setLoading(false);
@@ -341,7 +356,7 @@ export default function VotePage() {
     return () => {
       cancelled = true;
     };
-  }, [accessState]);
+  }, [accessState, electionId]);
 
   /* =======================================================
      VOTE STATE
@@ -394,7 +409,12 @@ export default function VotePage() {
   ======================================================= */
 
   async function confirmVote() {
-    if (!selectedParty || !electionAddress) return;
+    if (
+      !selectedParty ||
+      !electionAddress ||
+      electionId === null
+    )
+      return;
 
     const provider = (window as { solana?: any }).solana;
 
@@ -412,6 +432,7 @@ export default function VotePage() {
         const result = await submitVoteCommit({
         walletProvider: provider,
         election: electionAddress,
+        electionId,
         partyId: Number(selectedParty.partyId),
         });
 
@@ -467,6 +488,22 @@ export default function VotePage() {
   /* =======================================================
      ACCESS LOADING
   ======================================================= */
+
+  if (configError) {
+    return (
+      <>
+        <SiteNav />
+
+        <Shell>
+          <main className="hm-main">
+            <p className="hm-wait" role="alert">
+              {configError}
+            </p>
+          </main>
+        </Shell>
+      </>
+    );
+  }
 
   if (
     accessState !== "granted"
