@@ -6,6 +6,9 @@ import * as anchor from "@coral-xyz/anchor";
 
 import Link from "next/link";
 
+import SiteNav from "@/components/SiteNav";
+import Shell from "@/components/Shell";
+
 import { buildSetElectionMessage } from "@/lib/election";
 import { useElectionId } from "@/lib/use-election-id";
 
@@ -55,80 +58,16 @@ export default function AdminDashboard() {
 
 
   return (
+    <>
+      <SiteNav
+        wallet={ADMIN_WALLET}
+        label="Admin · กระเป๋า"
+      />
+
+      <Shell>
     <main className="admin-page">
 
-      <div className="admin-background-decoration admin-decoration-one" />
-
-      <div className="admin-background-decoration admin-decoration-two" />
-
-
       <div className="admin-container">
-
-
-        {/* ==================================================
-            HEADER
-        ================================================== */}
-
-        <header className="admin-header">
-
-          <div className="admin-brand">
-
-            <div className="admin-brand-logo">
-
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-
-                <path
-                  d="M12 3L19 6V11.5C19 16.2 16 19.5 12 21C8 19.5 5 16.2 5 11.5V6L12 3Z"
-                  stroke="white"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-
-                <path
-                  d="M8.5 12L10.8 14.3L15.5 9.6"
-                  stroke="white"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-
-              </svg>
-
-            </div>
-
-            <span>
-              BlockVote
-            </span>
-
-          </div>
-
-
-          <Link
-            href="/scoreboard"
-            className="admin-wallet"
-            style={{ textDecoration: "none", marginLeft: "auto", marginRight: 10 }}
-          >
-            ผลคะแนน
-          </Link>
-
-          <div className="admin-wallet">
-
-            <span className="admin-wallet-dot" />
-
-            <span>
-              Admin
-            </span>
-
-          </div>
-
-        </header>
-
 
         {/* ==================================================
             TITLE
@@ -136,22 +75,14 @@ export default function AdminDashboard() {
 
         <section className="admin-title-section">
 
-          <div>
+          <h1>
+            Election Management
+          </h1>
 
-            <p className="admin-eyebrow">
-              ADMINISTRATOR
-            </p>
-
-            <h1>
-              Election Management
-            </h1>
-
-            <p>
-              Manage elections, parties and voter
-              registration on the Solana blockchain.
-            </p>
-
-          </div>
+          <p>
+            Manage elections, parties and voter
+            registration on the Solana blockchain.
+          </p>
 
         </section>
 
@@ -167,7 +98,7 @@ export default function AdminDashboard() {
             TABS
         ================================================== */}
 
-        <nav className="admin-tabs">
+        <nav className="admin-tabs" aria-label="Admin sections">
 
           <button
             className={
@@ -280,7 +211,7 @@ export default function AdminDashboard() {
             <RevealResultsForm />
 
             <p style={{ marginTop: 16 }}>
-              <Link href="/scoreboard">
+              <Link href="/scoreboard" className="hm-link">
                 ดู Scoreboard →
               </Link>
             </p>
@@ -290,6 +221,8 @@ export default function AdminDashboard() {
       </div>
 
     </main>
+      </Shell>
+    </>
   );
 }
 
