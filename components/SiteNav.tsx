@@ -13,8 +13,10 @@ import { IconArrowRight } from "@/components/icons";
 
 export default function SiteNav({
   wallet,
+  label = "กระเป๋า",
 }: {
   wallet?: string | null;
+  label?: string;
 }) {
   const pathname = usePathname();
 
@@ -35,10 +37,13 @@ export default function SiteNav({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/blockvote.png"
-            alt="BlockVote"
+            alt=""
+            width={32}
             height={32}
             className="hm-brand-img"
           />
+
+          BlockVote
         </Link>
 
         <Link href={action.href} className="hm-action">
@@ -49,7 +54,7 @@ export default function SiteNav({
 
       {wallet && (
         <div className="hm-folio">
-          <span>กระเป๋า</span>
+          <span>{label}</span>
 
           <span
             className="hm-tnum"
