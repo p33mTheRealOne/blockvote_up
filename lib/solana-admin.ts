@@ -274,8 +274,8 @@ export async function registerVoterOnChain(
    เพื่อใช้จ่ายค่าธรรมเนียมตอนโหวต
 ========================================================= */
 
-// 0.002 SOL
-export const VOTER_AIRDROP_LAMPORTS = 2_000_000;
+// 0.003 SOL
+export const VOTER_AIRDROP_LAMPORTS = 3_000_000;
 
 function sleep(ms: number) {
   return new Promise((resolve) =>
